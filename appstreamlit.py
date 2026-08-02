@@ -1618,7 +1618,8 @@ with reports:
 
 st.divider()
 st.caption(
-    "Commercial Printing Analytics | Profitability | Customer Retention | Reporting"
+    "Commercial Printing Analytics Dashboard | Created by "
+    "[Syed Abuthagir S](https://www.linkedin.com/in/syed-abuthagir-s-59710b1bb/)"
 )
 
 

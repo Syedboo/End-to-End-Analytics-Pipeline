@@ -1,0 +1,15 @@
+﻿# Customer churn configuration for W&G Baird commercial printing analytics.
+# The churn label is behavioural because the source data has no explicit churn flag.
+observation_window_days: 365
+prediction_window_days: 60
+gap_days: 0
+snapshot_frequency: MS
+min_history_days: 90
+min_distinct_order_days: 3
+min_reorder_window_days: 30
+recent_value_window_days: 180
+contact_capacity: 10
+contact_cost: 25.0
+intervention_success_rate: 0.20
+retained_value_rate: 0.35
+model_version: churn_v1_2026_08_01

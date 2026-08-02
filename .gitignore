@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+.DS_Store
+# Local Streamlit secrets must never be committed
+.streamlit/secrets.toml
+# Generated analytics outputs
+outputs/
+data/processed/
+# Source workbooks contain real pseudo-anonymised sample data; upload them in the app instead
+data/raw/*.xlsx
+data/raw/*.xls
+data/raw/*.xlsm
+data/raw/*.csv
+# Local runtime logs
+*.log
+streamlit_visuals_*.out.log
+streamlit_visuals_*.err.log

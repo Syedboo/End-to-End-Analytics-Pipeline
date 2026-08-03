@@ -102,7 +102,6 @@ def run_cached_pipeline(
 
 
 
-@st.cache_data(show_spinner=False, max_entries=30)
 def filter_cached_analysis_data(
     analysis_data: pd.DataFrame,
     selected_years: tuple[str, ...],
@@ -120,7 +119,6 @@ def filter_cached_analysis_data(
 
 
 
-@st.cache_data(show_spinner=False, max_entries=30)
 def build_cached_dashboard_outputs(
     filtered_data: pd.DataFrame,
     reference_date: str,
@@ -299,7 +297,7 @@ include_flagged_rows = st.sidebar.checkbox("Include records requiring review", v
 selected_years_tuple = tuple(selected_years)
 selected_months_tuple = tuple(selected_months)
 
-filtered_df = filter_cached_analysis_data(
+filtered_df = filter_dashboard_data(
     analysis_df,
     selected_years_tuple,
     selected_months_tuple,
@@ -352,21 +350,42 @@ active_page = st.radio(
     key="active_dashboard_section",
 )
 
-needs_dashboard_outputs = active_page in {
-    "Executive Summary",
-    "Overview",
-    "Churn Analytics",
-}
-if needs_dashboard_outputs:
-    with st.spinner("Updating dashboard section..."):
-        business_tables, customer_lifecycle = build_cached_dashboard_outputs(
-            filtered_df,
-            pd.Timestamp(as_of_date).date().isoformat(),
-        )
+OVERVIEW_OPTIONS = [
+    "Top Performers",
+    "Product Mix & Margin",
+    "Pricing Review",
+    "Monthly Trends",
+    "Supporting Tables",
+]
+if active_page == "Overview":
+    if st.session_state.get("overview_section") not in OVERVIEW_OPTIONS:
+        st.session_state["overview_section"] = OVERVIEW_OPTIONS[0]
+    overview_section = st.radio(
+        "Commercial view",
+        OVERVIEW_OPTIONS,
+        horizontal=True,
+        key="overview_section",
+    )
 else:
-    business_tables = {}
-    customer_lifecycle = pd.DataFrame()
+    overview_section = st.session_state.get("overview_section", OVERVIEW_OPTIONS[0])
 
+needs_business_tables = (
+    active_page == "Executive Summary"
+    or (active_page == "Overview" and overview_section in {"Top Performers", "Monthly Trends", "Supporting Tables"})
+)
+needs_customer_lifecycle = active_page in {"Executive Summary", "Churn Analytics"}
+
+business_tables = {}
+customer_lifecycle = pd.DataFrame()
+if needs_business_tables or needs_customer_lifecycle:
+    with st.spinner("Updating visible section..."):
+        if needs_business_tables:
+            business_tables = build_business_tables(filtered_df)
+        if needs_customer_lifecycle:
+            customer_lifecycle = build_customer_lifecycle_features(
+                filtered_df,
+                reference_date=pd.Timestamp(as_of_date),
+            )
 filtered_sales_dates = pd.to_datetime(filtered_df.get("SalesIn"), errors="coerce").dropna()
 data_updated_label = (
     filtered_sales_dates.max().strftime("%d %B %Y")
@@ -1474,22 +1493,6 @@ if active_page == "Executive Summary":
     render_board_summary(filtered_df, business_tables, customer_lifecycle, comparison_df)
 
 elif active_page == "Overview":
-    overview_options = [
-        "Top Performers",
-        "Product Mix & Margin",
-        "Pricing Review",
-        "Monthly Trends",
-        "Supporting Tables",
-    ]
-    if st.session_state.get("overview_section") not in overview_options:
-        st.session_state["overview_section"] = overview_options[0]
-    overview_section = st.radio(
-        "Commercial view",
-        overview_options,
-        horizontal=True,
-        key="overview_section",
-    )
-
     if overview_section == "Top Performers":
         st.subheader("Top Performers")
         render_interactive_rankings(business_tables)

@@ -1,37 +1,83 @@
-# End to End Analytics
-Disclaimer: This is an independent demonstration project. It is not an official product, production system, or internal pipeline of any company.
-The repository does not contain confidential company information. Any sample data used for demonstration purposes is synthetic, anonymised, or provided specifically for the assessment.
+# Commercial Printing Analytics Dashboard
 
-Live dashboard: https://end-to-end-analytics.streamlit.app/
+This is an independent demonstration project created for the W&G Baird recruitment task. It is not an official company system. The app analyses pseudo-anonymised commercial printing job data and turns it into board-level insights on revenue, Value Added, customer retention risk, pricing exceptions, product mix and data quality.
 
-This dashboard helps senior leaders review commercial printing performance from an Excel workbook. It is designed to answer practical business questions: where revenue is coming from, where value is being created or lost, which customers need attention, and which pricing or production records should be reviewed.
+Live dashboard: https://wg-baird-end-to-end-analytics.streamlit.app/
 
-## How To Use The Dashboard
+Created by [Syed Abuthagir S](https://www.linkedin.com/in/syed-abuthagir-s-59710b1bb/).
 
-1. Open the live dashboard: https://end-to-end-analytics.streamlit.app/ (If the app appears blank, click Manage app in the bottom-right corner, open the three-dot menu, and select Reboot app.)
-2. Note: Because the dashboard is hosted on Streamlit Community Cloud, it may take a minute or two to load, especially after a period of inactivity.
-3. Click the double-arrow icon (») in the top-left corner to open the sidebar.
-4. In the sidebar, upload the latest Excel workbook.
-5. Please Wait for the dashboard to process the file.
-6. Use the Year and Month filters in the sidebar to select the required reporting period.
+## For Interviewers: How To View The Dashboard
 
+### Option 1: Use The Live Dashboard
 
-The upload should be an Excel file using the same type of commercial printing job structure as the sample dataset. The most important fields are customer, date, revenue, Value Added, purchases, rebate, product type, work type, industry, region, sales representative and production fields such as press hours and impressions.
+1. Open https://wg-baird-end-to-end-analytics.streamlit.app/
+2. If the app is asleep, allow one or two minutes for it to wake up.
+3. Open the sidebar using the top-left sidebar control.
+4. Upload an Excel workbook in the same format as the assessment dataset.
+5. Use the Year and Month filters to review the required period.
+
+If the live dashboard appears blank or takes too long to respond, please use the local fallback below. Streamlit Community Cloud can occasionally sleep, reboot or run slowly during demonstrations.
+
+## Option 2: Run Locally From The GitHub ZIP File
+
+No Git commands are required for this route.
+
+1. Download the repository ZIP file:
+
+   https://github.com/Syedboo/End-to-End-Analytics-Pipeline/archive/refs/heads/main.zip
+
+2. Unzip the file to a normal folder, for example:
+
+   ```text
+   Downloads\End-to-End-Analytics-Pipeline-main
+   ```
+
+3. Open PowerShell in the unzipped folder.
+
+4. Create and activate a Python environment:
+
+   ```powershell
+   py -3.12 -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   ```
+
+   If `py -3.12` is not available, install Python 3.12 from https://www.python.org/downloads/ and try again.
+
+5. Install the dashboard requirements:
+
+   ```powershell
+   python -m pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+
+6. Start the dashboard:
+
+   ```powershell
+   streamlit run streamlit_app.py
+   ```
+
+7. A browser window should open automatically. If it does not, copy the local URL shown in PowerShell, usually:
+
+   ```text
+   http://localhost:8501
+   ```
+
+8. Upload the Excel workbook through the sidebar and use the dashboard normally.
 
 ## What The Dashboard Shows
 
-The Executive Summary gives a board-level view of:
+The Executive Summary is designed for a non-technical board audience. It focuses on:
 
 - Revenue
 - Value Added
-- Value Added Margin
+- Weighted Value Added Margin
 - Jobs completed
 - Average order value
-- Customer value at risk
+- Customer Value at Risk
 - Priority commercial actions
 - Top customers by Value Added
 
-The other tabs provide more detailed analysis of customer retention risk, pricing exceptions, product and work-type performance, operations, data quality and downloadable reports.
+The supporting pages provide more detail on customer retention risk, pricing exceptions, product and work-type performance, operations, data quality and report outputs.
 
 ## Key Calculation Assumptions
 
@@ -43,7 +89,7 @@ This should be read as a commercial performance measure, not as a final audited 
 
 ### Imputed Sell Price
 
-Some records may have missing or placeholder Sell Price values, such as blanks, zero values, `-`, `GBP-` or similar currency placeholders.
+Some records may contain missing or placeholder Sell Price values, such as blanks, zero values, `-`, `GBP-` or similar currency placeholders.
 
 Where this happens, the dashboard estimates Sell Price using:
 
@@ -58,7 +104,7 @@ These rows are not hidden. They are flagged so users can see that the original S
 Grouped margin is calculated using totals, not by averaging individual row percentages.
 
 ```text
-Value Added Margin = sum(VA Amount) / sum(Sell Price)
+Weighted Value Added Margin = sum(VA Amount) / sum(Sell Price)
 ```
 
 This is important because a large order should carry more weight than a small order. It gives a fairer margin for customers, products, industries, regions and work types.
@@ -75,49 +121,30 @@ The dashboard keeps unusual records visible rather than silently deleting them. 
 - missing purchase values
 - unusually high or low Value Added
 
-A record being flagged does not automatically mean it is wrong. It means the record needs context before it is used for detailed pricing or margin decisions.
+A flagged record is not automatically unusable. It means the record needs context before it is used for detailed pricing or margin decisions.
 
-If the dashboard says, for example, that 65% of records are reliable, this does not mean the remaining 35% are unusable. It means 65% passed every validation rule without warning. The remaining records are still retained in the dashboard, but each has at least one issue that should be reviewed.
+## Notes For The Demonstration
 
-## Recommended Use In A Board Meeting
+The dashboard is dynamic rather than a static report. When a new Excel file with the same structure is uploaded, the data is cleaned, checked, recalculated and refreshed through the dashboard.
 
-Start with the Executive Summary and focus on four questions:
+The main business questions it supports are:
 
 1. How is the business performing?
-2. Where are we making or losing value?
+2. Where is value being created or lost?
 3. Which customers or products require attention?
-4. What decisions should we take next?
+4. What decisions should be taken next?
 
-Use the Reports tab when someone asks how the figures were prepared or why records were flagged.
+## Troubleshooting
 
-## Important Limitations
+If the live dashboard does not load, run it locally using the ZIP instructions above.
 
-This dashboard is a decision-support tool. It supports commercial review, customer prioritisation and pricing discussion. It should not replace the finance system, audited accounts or account-manager judgement.
+If local installation fails, check that:
 
-For sensitive business data, check who can access the Streamlit app before uploading files.
+- Python 3.12 is installed.
+- PowerShell is opened inside the unzipped project folder.
+- The virtual environment is activated before installing requirements.
+- The command is `streamlit run streamlit_app.py`.
 
-## For Project Maintainers
+Streamlit entrypoint: `streamlit_app.py`
 
-Run locally with:
-
-```bash
-streamlit run streamlit_app.py
-```
-
-Run validation tests with:
-
-```bash
-python -m unittest discover -v
-```
-
-Streamlit Community Cloud entrypoint:
-
-```text
-streamlit_app.py
-```
-
-Main dashboard code:
-
-```text
-appstreamlit.py
-```
+Main dashboard file: `appstreamlit.py`

@@ -34,17 +34,16 @@ from src.utils import display_format_for_column, safe_divide
 # PAGE CONFIG
 # ----------------------------------------------------
 
-# Prefer a repo-relative path so this still works if the project folder
-# moves or is shared with someone else. Falls back to the absolute path
-# on this machine if the relative one isn't found.
+# Prefer a repo-relative path so the logo works locally and on Streamlit Cloud.
+# The absolute path is only a local fallback for this machine.
 LOGO_CANDIDATES = [
-    Path(__file__).parent / "assets" / "wg_baird_ltd_logo.jpg",
-    Path(r"C:\Users\e16013172\WG BAIRD KTP Assignment\Printing Analytics with Streamlit\assets\wg_baird_ltd_logo.jpg"),
+    Path(__file__).parent / "assets" / "logo.png",
+    Path(r"C:\Users\e16013172\WG BAIRD KTP Assignment\Printing Analytics with Streamlit\assets\logo.png"),
 ]
 LOGO_PATH = next((p for p in LOGO_CANDIDATES if p.exists()), None)
 
 st.set_page_config(
-    page_title="W&G Baird | Commercial Printing Analytics",
+    page_title="Commercial Printing Analytics",
     page_icon=str(LOGO_PATH) if LOGO_PATH else ":bar_chart:",
     layout="wide",
     initial_sidebar_state="collapsed",

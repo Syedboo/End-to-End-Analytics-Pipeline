@@ -331,7 +331,6 @@ if st.session_state.get('_churn_filter_signature') != filter_signature:
 
 as_of_date = st.sidebar.date_input(
     'Customer risk date',
-    value=st.session_state['churn_as_of_date'],
     key='churn_as_of_date',
 )
 

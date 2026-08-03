@@ -1,12 +1,14 @@
-# W&G Baird Commercial Printing Analytics
+# End to End Analytics
+Disclaimer: This is an independent demonstration project. It is not an official product, production system, or internal pipeline of any company.
+The repository does not contain confidential company information. Any sample data used for demonstration purposes is synthetic, anonymised, or provided specifically for the assessment.
 
-Live dashboard: https://wg-baird-end-to-end-analytics.streamlit.app/
+Live dashboard: https://end-to-end-analytics.streamlit.app/
 
 This dashboard helps senior leaders review commercial printing performance from an Excel workbook. It is designed to answer practical business questions: where revenue is coming from, where value is being created or lost, which customers need attention, and which pricing or production records should be reviewed.
 
 ## How To Use The Dashboard
 
-1. Open the live dashboard: https://wg-baird-end-to-end-analytics.streamlit.app/
+1. Open the live dashboard: https://end-to-end-analytics.streamlit.app/
 2. Note: Because the dashboard is hosted on Streamlit Community Cloud, it may take a minute or two to load, especially after a period of inactivity.
 3. Click the double-arrow icon (») in the top-left corner to open the sidebar.
 4. In the sidebar, upload the latest Excel workbook.

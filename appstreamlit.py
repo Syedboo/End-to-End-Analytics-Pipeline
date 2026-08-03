@@ -50,7 +50,7 @@ st.set_page_config(
 )
 
 @st.cache_data(
-    show_spinner="Preparing dashboard data.",
+    show_spinner=False,
     max_entries=3,
 )
 def run_cached_pipeline(
@@ -156,11 +156,50 @@ if uploaded_file is None:
 # ----------------------------------------------------
 
 uploaded_bytes = uploaded_file.getvalue()
+loading_placeholder = st.empty()
+loading_placeholder.markdown(
+    """
+    <style>
+    @keyframes dashboard-spin {
+        to { transform: rotate(360deg); }
+    }
+    .dashboard-loading {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        width: 100%;
+        margin: 0.75rem 0 1rem 0;
+        padding: 0.85rem 1rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        background: #f8fafc;
+        color: #111827;
+        font-size: 0.98rem;
+        font-weight: 600;
+    }
+    .dashboard-loading-spinner {
+        width: 16px;
+        height: 16px;
+        border: 2px solid #cbd5e1;
+        border-top-color: #2563eb;
+        border-radius: 999px;
+        animation: dashboard-spin 0.8s linear infinite;
+        flex: 0 0 auto;
+    }
+    </style>
+    <div class="dashboard-loading">
+        <span class="dashboard-loading-spinner"></span>
+        <span>Preparing dashboard data...</span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 results = run_cached_pipeline(
     uploaded_bytes,
     uploaded_file.name,
     generate_export_outputs,
 )
+loading_placeholder.empty()
 
 if generate_export_outputs:
     st.sidebar.success("Report downloads prepared.")

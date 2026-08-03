@@ -80,7 +80,11 @@ def _rule_based_estimate(df: pd.DataFrame) -> pd.Series:
     return base.clip(lower=0)
 
 
-def estimate_sell_price(df: pd.DataFrame, random_state: int = 42) -> SellPriceImputationResult:
+def estimate_sell_price(
+    df: pd.DataFrame,
+    random_state: int = 42,
+    fast_mode: bool = False,
+) -> SellPriceImputationResult:
     """Compare several estimation methods and populate Estimated Sell Price.
 
     Existing Sell Price is never overwritten. The selected model estimates only
@@ -102,7 +106,7 @@ def estimate_sell_price(df: pd.DataFrame, random_state: int = 42) -> SellPriceIm
         default="Actual",
     )
 
-    if valid_train.sum() < 50:
+    if fast_mode or valid_train.sum() < 50:
         estimate = _rule_based_estimate(data)
         data["Estimated Sell Price"] = np.where(needs_estimate, estimate, data["Sell Price"])
         data["Sell Price Confidence"] = np.select(
@@ -110,12 +114,15 @@ def estimate_sell_price(df: pd.DataFrame, random_state: int = 42) -> SellPriceIm
             ["Formula", "Low"],
             default="Actual",
         )
+        model_name = "Rule-based cost floor"
+        if fast_mode and valid_train.sum() >= 50:
+            model_name = "Rule-based cost floor (dashboard fast mode)"
         return SellPriceImputationResult(
             data=data,
             model_metrics=pd.DataFrame(
-                [{"Model": "Rule-based cost floor", "MAE": np.nan, "RMSE": np.nan, "MAPE": np.nan, "R2": np.nan}]
+                [{"Model": model_name, "MAE": np.nan, "RMSE": np.nan, "MAPE": np.nan, "R2": np.nan}]
             ),
-            selected_model="Rule-based cost floor",
+            selected_model=model_name,
             feature_importance=pd.DataFrame(),
         )
 

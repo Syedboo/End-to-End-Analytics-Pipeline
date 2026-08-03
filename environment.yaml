@@ -1,0 +1,20 @@
+name: printing_analytics
+channels:
+  - snowflake
+dependencies:
+  - python=3.11
+  - streamlit
+  - pandas
+  - numpy
+  - matplotlib
+  - seaborn
+  - plotly
+  - scipy
+  - scikit-learn
+  - statsmodels
+  - joblib
+  - openpyxl
+  - xlsxwriter
+  - jinja2
+  - markdown
+  - nbformat

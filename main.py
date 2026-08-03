@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import errno
+import tempfile
 from pathlib import Path
 
 import pandas as pd
@@ -86,6 +88,48 @@ def _resolve_input_path(input_path: Path) -> Path:
     return input_path
 
 
+def _prepare_runtime_paths(
+    output_dir: Path,
+    processed_dir: Path,
+    save_outputs: bool,
+) -> tuple[Path, Path]:
+    """Return writable output paths for local and Snowflake Streamlit runtimes.
+
+    Streamlit in Snowflake mounts the app source as read-only. The dashboard
+    usually runs without static exports, but when report downloads are requested
+    we still need a writable location. Snowflake exposes /tmp for temporary app
+    files, so fall back there if the normal project folders cannot be created.
+    """
+    output_dir = Path(output_dir)
+    processed_dir = Path(processed_dir)
+
+    if not save_outputs:
+        runtime_root = Path(tempfile.gettempdir()) / "printing_analytics_runtime"
+        return runtime_root / "outputs", runtime_root / "data" / "processed"
+
+    def required_dirs(base_output: Path, base_processed: Path) -> list[Path]:
+        return [
+            base_processed,
+            base_output / "figures",
+            base_output / "tables",
+            base_output / "reports",
+        ]
+
+    try:
+        for directory in required_dirs(output_dir, processed_dir):
+            directory.mkdir(parents=True, exist_ok=True)
+        return output_dir, processed_dir
+    except OSError as exc:
+        if exc.errno not in {errno.EROFS, errno.EACCES, errno.EPERM}:
+            raise
+
+    runtime_root = Path(tempfile.gettempdir()) / "printing_analytics_runtime"
+    fallback_output = runtime_root / "outputs"
+    fallback_processed = runtime_root / "data" / "processed"
+    for directory in required_dirs(fallback_output, fallback_processed):
+        directory.mkdir(parents=True, exist_ok=True)
+    return fallback_output, fallback_processed
+
 
 def run_pipeline(
     input_path: Path,
@@ -97,13 +141,14 @@ def run_pipeline(
 ) -> dict:
     """Execute the complete analytics workflow and return paths to key outputs."""
     input_path = _resolve_input_path(input_path)
-    output_dir = Path(output_dir)
-    processed_dir = Path(processed_dir)
+    output_dir, processed_dir = _prepare_runtime_paths(
+        output_dir,
+        processed_dir,
+        save_outputs,
+    )
     figures_dir = output_dir / "figures"
     tables_dir = output_dir / "tables"
     reports_dir = output_dir / "reports"
-    for directory in [processed_dir, figures_dir, tables_dir, reports_dir]:
-        directory.mkdir(parents=True, exist_ok=True)
 
     raw_df, metadata = load_raw_data(input_path, sheet_name=sheet_name)
     field_definitions = load_field_definitions(input_path)
@@ -113,12 +158,57 @@ def run_pipeline(
 
     # Sell Price is commercially central. We preserve the source value and add
     # an estimate/confidence for missing, zero, negative, or below-purchase rows.
-    sell_price_imputation = estimate_sell_price(analysis_df)
+    sell_price_imputation = estimate_sell_price(analysis_df, fast_mode=not save_outputs)
     analysis_df = sell_price_imputation.data
 
     # Apply row-level business rules without deleting rows. Streamlit controls
     # whether flagged rows are included in calculations.
     analysis_df, anomaly_report = apply_business_rules(analysis_df)
+
+    if not save_outputs:
+        run_metadata = {
+            "input_metadata": metadata,
+            "raw_shape": metadata.get("raw_shape"),
+            "processed_path": None,
+            "data_quality_report": None,
+            "business_report_markdown": None,
+            "business_report_html": None,
+            "best_model": None,
+            "sell_price_imputation_model": sell_price_imputation.selected_model,
+            "dashboard_fast_mode": True,
+            "anomaly_report": None,
+            "calculation_validation": None,
+            "formula_discovery_report": None,
+            "customer_churn_predictions": None,
+            "churn_model_evaluation": None,
+            "churn_pipeline_audit": None,
+            "churn_data_quality_report": None,
+            "churn_selected_model": None,
+            "churn_recommended_threshold": None,
+        }
+        empty = pd.DataFrame()
+        return {
+            "metadata": run_metadata,
+            "analysis_df": analysis_df,
+            "cleaned_df": cleaned_df,
+            "customer_lifecycle": customer_lifecycle,
+            "business_tables": {},
+            "descriptive": empty,
+            "categorical": empty,
+            "relationship_table": empty,
+            "statistical_tables": {},
+            "model_results": None,
+            "figures": {},
+            "clean_result": clean_result,
+            "anomaly_report": anomaly_report,
+            "sell_price_imputation": sell_price_imputation,
+            "calculation_validation": empty,
+            "calculation_details": empty,
+            "monthly_validation": empty,
+            "formula_report": empty,
+            "model_validation_tables": {},
+            "churn_results": None,
+        }
 
     # Production churn runs after imputation and anomaly rules so customer
     # risk, value-at-risk, and explanations use the same data as the dashboard.

@@ -19,7 +19,9 @@ from src.feature_engineering import build_customer_lifecycle_features
 
 from pathlib import Path
 from html import escape
+import gc
 import tempfile
+import time
 
 import numpy as np
 import pandas as pd
@@ -49,6 +51,25 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+
+
+
+def _safe_unlink_temp_file(path: Path, attempts: int = 5, delay: float = 0.2) -> None:
+    """Best-effort cleanup for uploaded temp files on Windows.
+
+    Pandas/openpyxl can briefly leave workbook handles locked after reading.
+    A locked temp file should not crash the dashboard, especially during demos.
+    """
+    for attempt in range(attempts):
+        try:
+            path.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            gc.collect()
+            if attempt == attempts - 1:
+                return
+            time.sleep(delay)
+
 @st.cache_data(
     show_spinner=False,
     max_entries=3,
@@ -76,7 +97,9 @@ def run_cached_pipeline(
             "metadata": outputs["metadata"],
         }
     finally:
-        temp_path.unlink(missing_ok=True)
+        _safe_unlink_temp_file(temp_path)
+
+
 
 
 @st.cache_data(show_spinner=False, max_entries=30)
@@ -93,6 +116,8 @@ def filter_cached_analysis_data(
         selected_months,
         include_flagged_rows,
     )
+
+
 
 
 @st.cache_data(show_spinner=False, max_entries=30)
@@ -312,10 +337,35 @@ as_of_date = st.sidebar.date_input(
     key='churn_as_of_date',
 )
 
-business_tables, customer_lifecycle = build_cached_dashboard_outputs(
-    filtered_df,
-    pd.Timestamp(as_of_date).date().isoformat(),
+PAGE_OPTIONS = [
+    "Executive Summary",
+    "Overview",
+    "Churn Analytics",
+    "Operations",
+    "Reports",
+]
+active_page = st.radio(
+    "Dashboard section",
+    PAGE_OPTIONS,
+    horizontal=True,
+    label_visibility="collapsed",
+    key="active_dashboard_section",
 )
+
+needs_dashboard_outputs = active_page in {
+    "Executive Summary",
+    "Overview",
+    "Churn Analytics",
+}
+if needs_dashboard_outputs:
+    with st.spinner("Updating dashboard section..."):
+        business_tables, customer_lifecycle = build_cached_dashboard_outputs(
+            filtered_df,
+            pd.Timestamp(as_of_date).date().isoformat(),
+        )
+else:
+    business_tables = {}
+    customer_lifecycle = pd.DataFrame()
 
 filtered_sales_dates = pd.to_datetime(filtered_df.get("SalesIn"), errors="coerce").dropna()
 data_updated_label = (
@@ -545,15 +595,15 @@ def _formatted_display_series(series: pd.Series, column_name: str) -> pd.Series:
 
 
 def render_interactive_rankings(tables: dict[str, pd.DataFrame]) -> None:
-    """Render tabbed interactive ranking charts for the main business dimensions."""
+    """Render one executive-friendly ranking chart for a selected business area."""
     ranking_specs = [
         ("Customers", "customers_profitability", "Customer Name"),
-        ("Industries", "industries_profitability", "Industry"),
-        ("Regions", "regions_profitability", "Region"),
         ("Products", "product_types_profitability", "Product Type"),
+        ("Industries", "industries_profitability", "Industry"),
         ("Work Types", "work_types_profitability", "Work Type"),
-        ("Binding", "binding_types_profitability", "Binding Type"),
+        ("Regions", "regions_profitability", "Region"),
         ("Sales Reps", "sales_representatives_profitability", "Rep"),
+        ("Binding", "binding_types_profitability", "Binding Type"),
     ]
     available_specs = [
         spec for spec in ranking_specs
@@ -563,82 +613,91 @@ def render_interactive_rankings(tables: dict[str, pd.DataFrame]) -> None:
         st.info("No ranking data is available for the current filters.")
         return
 
+    dimension_options = [label for label, _, _ in available_specs]
+    if st.session_state.get("interactive_ranking_dimension") not in dimension_options:
+        st.session_state["interactive_ranking_dimension"] = dimension_options[0]
+    selected_dimension = st.selectbox(
+        "Business area",
+        dimension_options,
+        key="interactive_ranking_dimension",
+    )
+    label, table_name, label_col = next(
+        spec for spec in available_specs if spec[0] == selected_dimension
+    )
+    table = tables[table_name].replace([np.inf, -np.inf], np.nan).copy()
+
     metric_options = {
         "Value Added": "VA_Amount",
         "Revenue": "Revenue",
         "VA Margin": "VA_Margin",
         "Average Markup": "Average_Markup",
     }
-    first_table = tables[available_specs[0][1]]
     metric_options = {
         label: column for label, column in metric_options.items()
-        if column in first_table.columns
+        if column in table.columns
     }
-    metric_label = st.radio(
-        "Rank by",
-        list(metric_options.keys()),
-        horizontal=True,
+    if not metric_options:
+        st.info(f"No performance measures are available for {selected_dimension.lower()}.")
+        return
+
+    metric_labels = list(metric_options.keys())
+    if st.session_state.get("interactive_ranking_metric") not in metric_labels:
+        st.session_state["interactive_ranking_metric"] = metric_labels[0]
+    metric_label = st.selectbox(
+        "Performance measure",
+        metric_labels,
         key="interactive_ranking_metric",
     )
     metric_col = metric_options[metric_label]
 
-    ranking_tabs = st.tabs([label for label, _, _ in available_specs])
-    for tab, (label, table_name, label_col) in zip(ranking_tabs, available_specs):
-        with tab:
-            table = tables[table_name].replace([np.inf, -np.inf], np.nan).copy()
-            if metric_col not in table.columns:
-                st.info(f"{metric_label} is not available for {label.lower()}.")
-                continue
+    plot_data = table.dropna(subset=[metric_col]).sort_values(
+        [metric_col, "Revenue"] if "Revenue" in table.columns else [metric_col],
+        ascending=False,
+    ).head(10)
+    if plot_data.empty:
+        st.info(f"No {selected_dimension.lower()} ranking data is available.")
+        return
 
-            plot_data = table.dropna(subset=[metric_col]).sort_values(
-                [metric_col, "Revenue"] if "Revenue" in table.columns else [metric_col],
-                ascending=False,
-            ).head(10)
-            if plot_data.empty:
-                st.info(f"No {label.lower()} ranking data is available.")
-                continue
+    plot_data[label_col] = plot_data[label_col].fillna("Unknown").astype(str)
+    plot_data["_Display Value"] = _formatted_display_series(plot_data[metric_col], metric_col)
+    color_col = "VA_Margin" if "VA_Margin" in plot_data.columns else metric_col
+    is_rate_color = "%" in display_format_for_column(color_col, plot_data[color_col].abs().max())
 
-            plot_data[label_col] = plot_data[label_col].fillna("Unknown").astype(str)
-            plot_data["_Display Value"] = _formatted_display_series(plot_data[metric_col], metric_col)
-            color_col = "VA_Margin" if "VA_Margin" in plot_data.columns else metric_col
-            is_rate_color = "%" in display_format_for_column(color_col, plot_data[color_col].abs().max())
+    chart_args = dict(
+        data_frame=plot_data,
+        x=metric_col,
+        y=label_col,
+        orientation="h",
+        color=color_col,
+        text="_Display Value",
+        hover_data=_safe_hover_columns(
+            plot_data,
+            [
+                "CustomerID",
+                "Jobs",
+                "Revenue",
+                "VA_Amount",
+                "VA_Margin",
+                "Average_Markup",
+                "Quantity",
+                "Press_Hours",
+            ],
+        ),
+        color_continuous_scale=DIVERGING_SCALE if is_rate_color else SEQUENTIAL_SCALE,
+        title=f"Top 10 {selected_dimension} by {metric_label}",
+    )
+    if is_rate_color:
+        chart_args["color_continuous_midpoint"] = 0
 
-            chart_args = dict(
-                data_frame=plot_data,
-                x=metric_col,
-                y=label_col,
-                orientation="h",
-                color=color_col,
-                text="_Display Value",
-                hover_data=_safe_hover_columns(
-                    plot_data,
-                    [
-                        "CustomerID",
-                        "Jobs",
-                        "Revenue",
-                        "VA_Amount",
-                        "VA_Margin",
-                        "Average_Markup",
-                        "Quantity",
-                        "Press_Hours",
-                    ],
-                ),
-                color_continuous_scale=DIVERGING_SCALE if is_rate_color else SEQUENTIAL_SCALE,
-                title=f"Top {label} by {metric_label}",
-            )
-            if is_rate_color:
-                chart_args["color_continuous_midpoint"] = 0
-
-            fig = px.bar(**chart_args)
-            fig.update_traces(textposition="outside", cliponaxis=False)
-            fig.update_yaxes(title_text="", autorange="reversed")
-            fig.update_xaxes(title_text=metric_col.replace("_", " "))
-            if is_rate_color:
-                fig.update_coloraxes(colorbar_title_text=color_col.replace("_", " "), colorbar_tickformat=".0%")
-            _format_plotly_business_axes(fig)
-            _style_interactive_figure(fig, height=360)
-            st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
-
+    fig = px.bar(**chart_args)
+    fig.update_traces(textposition="outside", cliponaxis=False)
+    fig.update_yaxes(title_text="", autorange="reversed")
+    fig.update_xaxes(title_text=metric_col.replace("_", " "))
+    if is_rate_color:
+        fig.update_coloraxes(colorbar_title_text=color_col.replace("_", " "), colorbar_tickformat=".0%")
+    _format_plotly_business_axes(fig)
+    _style_interactive_figure(fig, height=360)
+    st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
 
 def render_relationship_explorer(df: pd.DataFrame) -> None:
     """Render an interactive scatter explorer for profitability drivers."""
@@ -712,9 +771,14 @@ def render_relationship_explorer(df: pd.DataFrame) -> None:
 
 def render_mix_and_heatmap(df: pd.DataFrame) -> None:
     """Render value mix and margin heatmap charts."""
-    mix_tab, heatmap_tab = st.tabs(["Revenue Mix", "Margin Heatmap"])
+    mix_view = st.radio(
+        "Mix view",
+        ["Revenue Mix", "Margin Heatmap"],
+        horizontal=True,
+        key="mix_margin_view",
+    )
 
-    with mix_tab:
+    if mix_view == "Revenue Mix":
         required = ["Work Type", "Product Type", "Sell Price", "VA Amount", "Title"]
         if not all(column in df.columns for column in required):
             st.info("Revenue mix needs work type, product type, revenue, and VA amount fields.")
@@ -757,7 +821,7 @@ def render_mix_and_heatmap(df: pd.DataFrame) -> None:
             _style_interactive_figure(fig, height=410)
             st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
 
-    with heatmap_tab:
+    else:
         if "Work Type" not in df.columns or not {"Sell Price", "VA Amount"}.issubset(df.columns):
             st.info("Margin heatmap needs work type, revenue, and VA amount fields.")
         else:
@@ -857,20 +921,18 @@ def render_static_export_gallery(figures: dict) -> None:
 
 
 def render_interactive_visual_gallery(df: pd.DataFrame, tables: dict[str, pd.DataFrame], figures: dict) -> None:
-    """Render the main interactive visual exploration area."""
-    ranking_tab, relationship_tab, mix_tab, distribution_tab, export_tab = st.tabs(
-        ["Rankings", "Relationships", "Mix & Heatmap", "Distributions", "Export Figures"]
+    """Render the two board-friendly visual exploration areas."""
+    visual_section = st.radio(
+        "Commercial chart",
+        ["Top Performers", "Product Mix & Margin"],
+        horizontal=True,
+        key="visual_explorer_section",
     )
-    with ranking_tab:
+
+    if visual_section == "Top Performers":
         render_interactive_rankings(tables)
-    with relationship_tab:
-        render_relationship_explorer(df)
-    with mix_tab:
+    else:
         render_mix_and_heatmap(df)
-    with distribution_tab:
-        render_distribution_explorer(df)
-    with export_tab:
-        render_static_export_gallery(figures)
 
 
 def _first_value(table: pd.DataFrame | None, label_col: str, value_col: str) -> tuple[str, float]:
@@ -1405,47 +1467,49 @@ def sort_lifecycle_for_display(df: pd.DataFrame) -> pd.DataFrame:
     return ranked.sort_values(sort_columns, ascending=ascending).drop(columns=['_Risk Rank'])
 
 # ----------------------------------------------------
-# DASHBOARD TABS
+# DASHBOARD SECTIONS
 # ----------------------------------------------------
 
-executive_tab, pricing_profitability, customers_tab, operations, reports = st.tabs(
-    ["Executive Summary", "Overview", "Churn Analytics", "Operations", "Reports"]
-)
-
-# ----------------------------------------------------
-# EXECUTIVE SUMMARY
-# ----------------------------------------------------
-
-with executive_tab:
+if active_page == "Executive Summary":
     render_board_summary(filtered_df, business_tables, customer_lifecycle, comparison_df)
 
-# ----------------------------------------------------
-# PRICING & PROFITABILITY
-# ----------------------------------------------------
+elif active_page == "Overview":
+    overview_options = [
+        "Top Performers",
+        "Product Mix & Margin",
+        "Pricing Review",
+        "Monthly Trends",
+        "Supporting Tables",
+    ]
+    if st.session_state.get("overview_section") not in overview_options:
+        st.session_state["overview_section"] = overview_options[0]
+    overview_section = st.radio(
+        "Commercial view",
+        overview_options,
+        horizontal=True,
+        key="overview_section",
+    )
 
-with pricing_profitability:
+    if overview_section == "Top Performers":
+        st.subheader("Top Performers")
+        render_interactive_rankings(business_tables)
+    elif overview_section == "Product Mix & Margin":
+        st.subheader("Product Mix & Margin")
+        render_mix_and_heatmap(filtered_df)
+    elif overview_section == "Pricing Review":
+        render_pricing_review_dashboard(filtered_df)
+    elif overview_section == "Monthly Trends":
+        st.subheader("Monthly Trends")
+        render_interactive_monthly_trends(business_tables)
+    else:
+        st.subheader("Supporting Tables")
+        if business_tables:
+            table_name = st.selectbox("Select business table", list(business_tables.keys()))
+            st.dataframe(format_currency_df(business_tables[table_name]), use_container_width=True)
+        else:
+            st.info("No business tables are available for the current filters.")
 
-    st.subheader("Commercial Visual Explorer")
-    render_interactive_visual_gallery(filtered_df, business_tables, figures)
-    
-    st.divider()
-    render_pricing_review_dashboard(filtered_df)
-
-    st.divider()
-    st.subheader("Commercial Trends")
-    render_interactive_monthly_trends(business_tables)
-
-
-
-    with st.expander("Detailed business tables"):
-        table_name = st.selectbox("Select business table", list(business_tables.keys()))
-        st.dataframe(format_currency_df(business_tables[table_name]), use_container_width=True)
-
-# ----------------------------------------------------
-# CUSTOMER TAB
-# ----------------------------------------------------
-
-with customers_tab:
+elif active_page == "Churn Analytics":
     st.subheader('Customer Retention Risk')
     st.caption(
         f'Customer risk uses {pd.Timestamp(as_of_date):%d %b %Y} as the review date. '
@@ -1487,8 +1551,6 @@ with customers_tab:
             s1.metric('Likely Lost', likely_churn)
             s2.metric('High Risk', high_risk)
             s3.metric('Due For Reorder', due_for_reorder)
-            #s4.metric('Value At Risk', f'{POUND}{value_at_risk:,.0f}')
-            #s5.metric('Historical Follow-Up Value', f'{POUND}{historical_va:,.0f}')
             if not follow_up.empty:
                 st.warning(
                     f'{len(follow_up)} customer(s) need follow-up, representing '
@@ -1573,11 +1635,8 @@ with customers_tab:
             display_columns = [column for column in display_columns if column in enriched.columns]
             display_df = enriched[display_columns].rename(columns=display_labels)
             st.dataframe(format_currency_df(display_df), use_container_width=True)
-# ----------------------------------------------------
-# OPERATIONS
-# ----------------------------------------------------
 
-with operations:
+elif active_page == "Operations":
     st.subheader("Operations Summary")
 
     production_summary = (
@@ -1598,11 +1657,7 @@ with operations:
 
     st.dataframe(format_currency_df(production_summary), use_container_width=True)
 
-# ----------------------------------------------------
-# REPORTS
-# ----------------------------------------------------
-
-with reports:
+elif active_page == "Reports":
     st.subheader("Reports")
     with st.expander("Data quality summary", expanded=True):
         render_data_quality_report(filtered_df)
@@ -1659,17 +1714,3 @@ st.caption(
     "Commercial Printing Analytics Dashboard | Created by "
     "[Syed Abuthagir S](https://www.linkedin.com/in/syed-abuthagir-s-59710b1bb/)"
 )
-
-
-
-
-
-
-
-
-
-
-
-
-
-

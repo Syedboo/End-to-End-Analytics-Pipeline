@@ -83,15 +83,15 @@ def load_raw_data(path: str | Path, sheet_name: str | None = None) -> tuple[pd.D
     metadata: dict[str, Any] = {"source_path": str(path), "source_type": path.suffix.lower()}
 
     if path.suffix.lower() in {".xlsx", ".xlsm", ".xls"}:
-        workbook = pd.ExcelFile(path)
-        metadata["sheet_names"] = workbook.sheet_names
-        selected_sheet = sheet_name or (
-            "Master Plain (Anon)"
-            if "Master Plain (Anon)" in workbook.sheet_names
-            else workbook.sheet_names[0]
-        )
-        metadata["selected_sheet"] = selected_sheet
-        df = pd.read_excel(path, sheet_name=selected_sheet)
+        with pd.ExcelFile(path) as workbook:
+            metadata["sheet_names"] = workbook.sheet_names
+            selected_sheet = sheet_name or (
+                "Master Plain (Anon)"
+                if "Master Plain (Anon)" in workbook.sheet_names
+                else workbook.sheet_names[0]
+            )
+            metadata["selected_sheet"] = selected_sheet
+            df = pd.read_excel(workbook, sheet_name=selected_sheet)
     elif path.suffix.lower() == ".csv":
         metadata["selected_sheet"] = None
         df = pd.read_csv(path)
@@ -108,7 +108,10 @@ def load_field_definitions(path: str | Path) -> pd.DataFrame:
     if path.suffix.lower() not in {".xlsx", ".xlsm", ".xls"}:
         return pd.DataFrame()
     try:
-        return pd.read_excel(path, sheet_name="Field Definitions")
+        with pd.ExcelFile(path) as workbook:
+            if "Field Definitions" not in workbook.sheet_names:
+                return pd.DataFrame()
+            return pd.read_excel(workbook, sheet_name="Field Definitions")
     except ValueError:
         return pd.DataFrame()
 

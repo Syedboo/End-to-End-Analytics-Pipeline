@@ -8,7 +8,7 @@ This dashboard helps senior leaders review commercial printing performance from 
 
 ## How To Use The Dashboard
 
-1. Open the live dashboard: https://end-to-end-analytics.streamlit.app/
+1. Open the live dashboard: https://end-to-end-analytics.streamlit.app/ (If the app appears blank, click Manage app in the bottom-right corner, open the three-dot menu, and select Reboot app.)
 2. Note: Because the dashboard is hosted on Streamlit Community Cloud, it may take a minute or two to load, especially after a period of inactivity.
 3. Click the double-arrow icon (») in the top-left corner to open the sidebar.
 4. In the sidebar, upload the latest Excel workbook.
